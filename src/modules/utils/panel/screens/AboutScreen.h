@@ -5,28 +5,27 @@
       You should have received a copy of the GNU General Public License along with Smoothie. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef CUSTOMSCREEN_H
-#define CUSTOMSCREEN_H
+#ifndef ABOUTSCREEN_H
+#define ABOUTSCREEN_H
 
 #include "PanelScreen.h"
 
-#include <vector>
-#include <tuple>
-
-class CustomScreen : public PanelScreen
+class AboutScreen : public PanelScreen
 {
 public:
-    CustomScreen();
+    AboutScreen();
 
     void on_refresh();
     void on_enter();
     void display_menu_line(uint16_t line);
     void clicked_menu_entry(uint16_t line);
     int idle_timeout_secs() { return 60; }
-    const char* getTitle() { return "Custom"; }
+    const char* getTitle() { return "About"; }
+
+    PanelScreen *extruder_screen;
 
 private:
-    std::vector<std::tuple<const char*,const char*> > menu_items;
+    std::string text [7];
 };
 
 #endif

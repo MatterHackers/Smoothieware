@@ -16,6 +16,7 @@
 #include "ControlScreen.h"
 #include "PrepareScreen.h"
 #include "ProbeScreen.h"
+#include "AboutScreen.h"
 #include "libs/nuts_bolts.h"
 #include "libs/utils.h"
 #include "modules/utils/player/PlayerPublicAccess.h"
@@ -39,6 +40,7 @@ MainMenuScreen::MainMenuScreen()
     this->watch_screen   = (new WatchScreen()   )->set_parent(this);
     this->file_screen    = (new FileScreen()    )->set_parent(this);
     this->prepare_screen = (new PrepareScreen() )->set_parent(this);
+    this->about_screen   = (new AboutScreen()   )->set_parent(this);
     this->set_parent(this->watch_screen);
 }
 
@@ -47,6 +49,7 @@ void MainMenuScreen::setupConfigureScreen()
 {
     auto mvs= new ModifyValuesScreen(true); // delete itself on exit
     mvs->set_parent(this);
+    mvs->setTitle("Configure");
 
     // acceleration
     mvs->addMenuItem("def Acceleration", // menu name
@@ -123,7 +126,8 @@ void MainMenuScreen::display_menu_line(uint16_t line)
         case 3: THEPANEL->lcd->printf("Prepare"); break;
         case 4: THEPANEL->lcd->printf("Custom"); break;
         case 5: THEPANEL->lcd->printf("Configure"); break;
-        case 6: THEPANEL->lcd->printf("Probe"); break;
+        //case 6: THEPANEL->lcd->printf("Probe"); break;
+        case 6: THEPANEL->lcd->printf("About"); break;
     }
 }
 
@@ -141,7 +145,8 @@ void MainMenuScreen::clicked_menu_entry(uint16_t line)
         case 3: THEPANEL->enter_screen(this->prepare_screen ); break;
         case 4: THEPANEL->enter_screen(THEPANEL->custom_screen ); break;
         case 5: setupConfigureScreen(); break;
-        case 6: THEPANEL->enter_screen((new ProbeScreen())->set_parent(this)); break;
+        //case 6: THEPANEL->enter_screen((new ProbeScreen())->set_parent(this)); break;
+        case 6: THEPANEL->enter_screen(this->about_screen); break;
     }
 }
 

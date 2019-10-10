@@ -33,6 +33,7 @@ class Panel : public Module {
         uint32_t encoder_tick(uint32_t dummy);
         void on_idle(void* argument);
         void on_main_loop(void* argument);
+        void on_gcode_received(void* argument);
         void on_set_public_data(void* argument);
         void on_second_tick(void* argument);
         void enter_screen(PanelScreen* screen);
@@ -52,8 +53,8 @@ class Panel : public Module {
         // Menu
         void enter_nop_mode();
         void enter_menu_mode(bool force= false);
-        void setup_menu(uint16_t rows, uint16_t lines);
-        void setup_menu(uint16_t rows);
+        void setup_menu(uint16_t rows, uint16_t lines, bool reset_pos = true);
+        void setup_menu(uint16_t rows, bool reset_pos = true);
         void menu_update();
         bool menu_change();
         uint16_t max_screen_lines() { return screen_lines; }
@@ -70,10 +71,13 @@ class Panel : public Module {
         float get_default_bed_temp() { return default_bed_temperature; }
 
         // file playing from sd
-        bool is_playing() const;
+        bool is_playing();
         bool is_suspended() const;
+        void update_sd_play_info();
         void set_playing_file(std::string f);
         const char* get_playing_file() { return playing_file; }
+        unsigned long get_elapsed_time();
+        unsigned int get_pcnt_played();
 
         std::string getMessage() { return message; }
         bool hasMessage() { return message.size() > 0; }
@@ -98,7 +102,6 @@ class Panel : public Module {
 
         // as panelscreen accesses private fields in Panel
         friend class PanelScreen;
-        friend class WatchScreen;
 
     private:
 
@@ -140,7 +143,12 @@ class Panel : public Module {
         std::string message;
         encoder_cb_t encoder_cb_fnc;
 
+        // Print status
         char playing_file[20];
+        unsigned long sd_elapsed_time;
+        unsigned int sd_pcnt_played;
+        unsigned long host_elapsed_time;
+        unsigned int host_pcnt_played;
 
         volatile struct {
             uint16_t screen_lines:16;
@@ -154,6 +162,8 @@ class Panel : public Module {
             bool laser_enabled:1;
             bool in_idle:1;
             bool display_extruder:1;
+            bool sd_is_playing:1;
+            bool host_is_playing:1;
             volatile bool counter_changed:1;
             volatile bool click_changed:1;
             volatile bool refresh_flag:1;

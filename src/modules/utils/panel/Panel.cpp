@@ -96,6 +96,12 @@ Panel::Panel()
     this->in_idle= false;
     this->display_extruder= false;
     strcpy(this->playing_file, "Playing file");
+    this->sd_is_playing = false;
+    this->sd_pcnt_played = 0;
+    this->sd_elapsed_time = 0;
+    this->host_is_playing = false;
+    this->host_pcnt_played = 0;
+    this->host_elapsed_time = 0;
 }
 
 Panel::~Panel()
@@ -204,6 +210,7 @@ void Panel::on_module_loaded()
     this->register_for_event(ON_IDLE);
     this->register_for_event(ON_MAIN_LOOP);
     this->register_for_event(ON_SET_PUBLIC_DATA);
+    this->register_for_event(ON_GCODE_RECEIVED);
 
     // Refresh timer
     THEKERNEL->slow_ticker->attach( 20, this, &Panel::refresh_tick );
@@ -316,6 +323,29 @@ void Panel::on_main_loop(void *argument)
     if (this->current_screen != NULL) {
         this->current_screen->on_main_loop();
         this->lcd->on_main_loop();
+    }
+}
+
+void Panel::on_gcode_received(void *argument)
+{
+    Gcode* gcode = static_cast<Gcode *>(argument);
+    if (gcode->has_m) {
+        if (gcode->m == 73 && gcode->has_letter('P')) {
+            this->host_pcnt_played = gcode->get_value('P');
+            if (this->host_pcnt_played == 100) {
+                this->host_is_playing = false;
+                this->host_elapsed_time = 0;
+                this->host_pcnt_played = 0;
+            } else {
+                this->host_is_playing = true;
+            }
+        } else if (gcode->m == 75) {
+            this->host_is_playing = true;
+        } else if (gcode->m == 77) {
+            this->host_is_playing = false;
+            this->host_elapsed_time = 0;
+            this->host_pcnt_played = 0;
+        }
     }
 }
 
@@ -515,16 +545,18 @@ void Panel::enter_menu_mode(bool force)
     encoder_cb_fnc= nullptr;
 }
 
-void Panel::setup_menu(uint16_t rows)
+void Panel::setup_menu(uint16_t rows, bool reset_pos)
 {
-    this->setup_menu(rows, min(rows, this->max_screen_lines()));
+    this->setup_menu(rows, min(rows, this->max_screen_lines()), reset_pos);
 }
 
-void Panel::setup_menu(uint16_t rows, uint16_t lines)
+void Panel::setup_menu(uint16_t rows, uint16_t lines, bool reset_pos)
 {
-    this->menu_selected_line = 0;
-    this->menu_current_line = 0;
-    this->menu_start_line = 0;
+    if (reset_pos) {
+        this->menu_selected_line = 0;
+        this->menu_current_line = 0;
+        this->menu_start_line = 0;
+    }
     this->menu_rows = rows;
     this->panel_lines = lines;
 }
@@ -630,15 +662,16 @@ float Panel::get_control_value()
     return this->control_base_value + (this->control_normal_counter * this->normal_increment);
 }
 
-bool Panel::is_playing() const
+bool Panel::is_playing()
 {
     void *returned_data;
 
     bool ok = PublicData::get_value( player_checksum, is_playing_checksum, &returned_data );
     if (ok) {
-        bool b = *static_cast<bool *>(returned_data);
-        return b;
+        this->sd_is_playing = *static_cast<bool *>(returned_data);
+        if (this->sd_is_playing) return true;
     }
+    if (host_is_playing) return true;
     return false;
 }
 
@@ -660,6 +693,23 @@ bool Panel::is_extruder_display_enabled(void)
 }
 
 
+void Panel::update_sd_play_info()
+{
+    void *returned_data;
+    bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
+    if (ok) {
+        struct pad_progress p =  *static_cast<struct pad_progress *>(returned_data);
+        this->sd_elapsed_time = p.elapsed_secs;
+        this->sd_pcnt_played = p.percent_complete;
+        this->set_playing_file(p.filename);
+    } else {
+        this->sd_elapsed_time = 0;
+        this->sd_pcnt_played = 0;
+        //this->set_playing_file("");
+    }
+}
+
+// I think theres a bug here when giving it a 0 length string
 void  Panel::set_playing_file(string f)
 {
     // just copy the first 20 characters after the first / if there
@@ -667,6 +717,26 @@ void  Panel::set_playing_file(string f)
     if (n == string::npos) n = 0;
     strncpy(playing_file, f.substr(n + 1, 19).c_str(), sizeof(playing_file));
     playing_file[sizeof(playing_file) - 1] = 0;
+}
+
+unsigned long Panel::get_elapsed_time()
+{
+    if (sd_is_playing) {
+        return sd_elapsed_time;
+    } else if (host_is_playing) {
+        return host_elapsed_time;
+    }
+    return 0;
+}
+
+unsigned int Panel::get_pcnt_played()
+{
+    if (sd_is_playing) {
+        return sd_pcnt_played;
+    } else if (host_is_playing) {
+        return host_pcnt_played;
+    }
+    return 0;
 }
 
 bool Panel::mount_external_sd(bool on)
@@ -724,4 +794,6 @@ void Panel::on_second_tick(void *arg)
     }else{
         // TODO for panels with no sd card detect we need to poll to see if card is inserted - or not
     }
+
+    if (host_is_playing) this->host_elapsed_time++;
 }

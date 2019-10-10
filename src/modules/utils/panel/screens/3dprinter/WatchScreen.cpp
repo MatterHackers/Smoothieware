@@ -55,9 +55,9 @@ void WatchScreen::on_enter()
     THEPANEL->setup_menu(4);
     get_current_status();
     get_current_pos(this->pos);
-    get_sd_play_info();
+    THEPANEL->update_sd_play_info();
     this->current_speed = lroundf(get_current_speed());
-    this->refresh_screen(false);
+    this->redraw();
     THEPANEL->enter_control_mode(1, 0.5);
     THEPANEL->set_control_value(this->current_speed);
 
@@ -98,14 +98,14 @@ void WatchScreen::on_refresh()
             // flag the update to change the speed, we don't want to issue hundreds of M220s
             // but we do want to display the change we are going to make
             this->speed_changed = true; // flag indicating speed changed
-            this->refresh_screen(false);
+            this->redraw();
         }
     }
 
     // Update Only every 20 refreshes, 1 a second
     update_counts++;
     if ( update_counts % 20 == 0 ) {
-        get_sd_play_info();
+        THEPANEL->update_sd_play_info();
         get_current_pos(this->pos);
         get_current_status();
         if (this->speed_changed) {
@@ -118,7 +118,7 @@ void WatchScreen::on_refresh()
             THEPANEL->reset_counter();
         }
 
-        this->refresh_screen(false); // graphics screens should be cleared
+        this->redraw();
 
         // for LCDs with leds set them according to heater status
         bool bed_on= false, hotend_on= false, is_hot= false;
@@ -141,6 +141,23 @@ void WatchScreen::on_refresh()
         THEPANEL->lcd->setLed(LED_HOT, is_hot);
 
         THEPANEL->lcd->setLed(LED_FAN_ON, this->fan_state);
+
+        // TODO: Remove this once RRDGLCD supports new graphics functions
+        if (THEPANEL->lcd->hasGraphics() && !THEPANEL->lcd->hasFullGraphics()) {
+            // display the graphical icons below the status are
+            // for (int i = 0; i < 5; ++i) {
+            //     THEPANEL->lcd->bltGlyph(i*24, 42, 16, 16, icons, 15, i*24, 0);
+            // }
+            if(heon&0x01) THEPANEL->lcd->bltGlyph(0, 42, 16, 16, large_icons, 2, 0, 0);
+            if(heon&0x02) THEPANEL->lcd->bltGlyph(27, 42, 16, 16, large_icons, 2, 0, 16);
+            if(heon&0x04) THEPANEL->lcd->bltGlyph(55, 42, 16, 16, large_icons, 2, 0, 32);
+
+            if (bed_on)
+                THEPANEL->lcd->bltGlyph(83, 42, 16, 16, large_icons, 2, 0, 48);
+
+            if(this->fan_state)
+                THEPANEL->lcd->bltGlyph(111, 42, 16, 16, large_icons, 2, 0, 64);
+        }
     }
 }
 
@@ -175,22 +192,6 @@ float WatchScreen::get_current_speed()
 {
     // in percent
     return 6000.0F / THEROBOT->get_seconds_per_minute();
-}
-
-void WatchScreen::get_sd_play_info()
-{
-    void *returned_data;
-    bool ok = PublicData::get_value( player_checksum, get_progress_checksum, &returned_data );
-    if (ok) {
-        struct pad_progress p =  *static_cast<struct pad_progress *>(returned_data);
-        this->elapsed_time = p.elapsed_secs;
-        this->sd_pcnt_played = p.percent_complete;
-        THEPANEL->set_playing_file(p.filename);
-
-    } else {
-        this->elapsed_time = 0;
-        this->sd_pcnt_played = 0;
-    }
 }
 
 void WatchScreen::display_menu_line(uint16_t line)
@@ -238,21 +239,25 @@ void WatchScreen::display_menu_line(uint16_t line)
             }
             break;
         }
-        case 2: THEPANEL->lcd->printf("%3d%%  %02lu:%02lu:%02lu  %3u%%", this->current_speed, this->elapsed_time / 3600, (this->elapsed_time % 3600) / 60, this->elapsed_time % 60, this->sd_pcnt_played); break;
+        case 2: {
+            unsigned long elapsed_time = THEPANEL->get_elapsed_time();
+            THEPANEL->lcd->printf("%3d%%  %02lu:%02lu:%02lu  %3u%%", this->current_speed, elapsed_time / 3600, (elapsed_time % 3600) / 60, elapsed_time % 60, THEPANEL->get_pcnt_played());
+            break;
+        }
         case 3: THEPANEL->lcd->printf("%19s", this->get_status()); break;
     }
 }
 
 const char *WatchScreen::get_status()
 {
-    if (THEPANEL->hasMessage())
-        return THEPANEL->getMessage().c_str();
-
     if (THEKERNEL->is_halted())
         return "HALTED Reset or M999";
 
     if (THEPANEL->is_suspended())
         return "Suspended";
+
+    if (THEPANEL->hasMessage())
+        return THEPANEL->getMessage().c_str();
 
     if (THEPANEL->is_playing())
         return THEPANEL->get_playing_file();
@@ -294,24 +299,27 @@ const char *WatchScreen::get_network()
     return NULL;
 }
 
-void WatchScreen::refresh_screen(bool clear)
+void WatchScreen::redraw()
 {
     if (THEPANEL->lcd->hasGraphics()) {
-        // For graphic LCDs we do all of the drawing manually
-        this->draw_graphics();
+        // TODO: Remove this check once additional graphics functions have been implemented for RRDGLCD
+        if (THEPANEL->lcd->hasFullGraphics()) {
+            // Use the full graphic watch screen on supported displays
+            this->draw_graphics();
+        } else {
+            // Revert to old screen for RRD
+            this->refresh_screen(true);
+        }
     } else {
         // Use the text based menu system for text only displays
-        if (clear) THEPANEL->lcd->clear();
-        for (uint16_t i = 0; i < min( THEPANEL->menu_rows, THEPANEL->panel_lines ); i++ ) {
-            THEPANEL->lcd->setCursor(0, i);
-            this->display_menu_line(i);
-        }
+        this->refresh_screen(false);
     }
 }
 
 void WatchScreen::draw_graphics()
 {
     THEPANEL->lcd->clear();
+    THEPANEL->lcd->setBackground(false);
 
     // Print the status line
     THEPANEL->lcd->setCursorPX(0, 0); THEPANEL->lcd->printf("%.21s", this->get_status());
@@ -377,11 +385,15 @@ void WatchScreen::draw_graphics()
     row++;
     
     if (THEPANEL->is_playing()) {
+        unsigned long elapsed_time = THEPANEL->get_elapsed_time();
+        unsigned int pcnt_played = THEPANEL->get_pcnt_played();
         // Print the elapsed print time
-        y = 11 + (row * (icon_height + 1));
-        THEPANEL->lcd->bltGlyph(x, y, icon_width, icon_height, time_icon);
-        THEPANEL->lcd->setCursorPX(x + icon_width + 1, y);
-        THEPANEL->lcd->printf("%luh %lum %lus", this->elapsed_time / 3600, (this->elapsed_time % 3600) / 60, this->elapsed_time % 60);
+        //if (elapsed_time != 0) {
+            y = 11 + (row * (icon_height + 1));
+            THEPANEL->lcd->bltGlyph(x, y, icon_width, icon_height, time_icon);
+            THEPANEL->lcd->setCursorPX(x + icon_width + 1, y);
+            THEPANEL->lcd->printf("%luh%lum%lus", elapsed_time / 3600, (elapsed_time % 3600) / 60, elapsed_time % 60);
+        //}
 
         // Print the progress bar
         THEPANEL->lcd->drawHLine(3, 55, 122);
@@ -392,10 +404,12 @@ void WatchScreen::draw_graphics()
         THEPANEL->lcd->pixel(2, 62);
         THEPANEL->lcd->pixel(125, 56);
         THEPANEL->lcd->pixel(125, 62);
-        THEPANEL->lcd->drawBox(2, 56, (this->sd_pcnt_played*124)/100, 7);
+        THEPANEL->lcd->drawBox(2, 56, (pcnt_played*124)/100, 7);
         THEPANEL->lcd->setCursorPX(55, 56);
         THEPANEL->lcd->setColor(2);
-        THEPANEL->lcd->printf("%u%%", this->sd_pcnt_played);
+        THEPANEL->lcd->printf("%u%%", pcnt_played);
         THEPANEL->lcd->setColor(1);
     }
+
+    THEPANEL->lcd->setBackground(true);
 }

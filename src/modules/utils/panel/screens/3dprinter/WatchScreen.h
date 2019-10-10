@@ -20,14 +20,13 @@ public:
     void on_refresh();
     void on_enter();
     void on_main_loop();
-    void refresh_screen(bool clear);
+    void redraw();
     void display_menu_line(uint16_t line);
 
 private:
     void get_current_status();
     float get_current_speed();
     void set_speed();
-    void get_sd_play_info();
     const char *get_status();
     const char *get_network();
     void draw_graphics();
@@ -37,8 +36,6 @@ private:
     uint32_t update_counts;
     int current_speed;
     float pos[3];
-    unsigned long elapsed_time;
-    unsigned int sd_pcnt_played;
     char *ipstr;
 
     struct {

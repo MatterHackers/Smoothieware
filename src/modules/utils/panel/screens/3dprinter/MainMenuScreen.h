@@ -17,6 +17,7 @@ class MainMenuScreen : public PanelScreen {
         void on_enter();
         void display_menu_line(uint16_t line);
         void clicked_menu_entry(uint16_t line);
+        const char* getTitle() { return "Menu"; }
 
         friend class Panel;
     private:
@@ -24,6 +25,7 @@ class MainMenuScreen : public PanelScreen {
         PanelScreen* file_screen;
         PanelScreen* jog_screen;
         PanelScreen* prepare_screen;
+        PanelScreen* about_screen;
 
         void abort_playing();
         void setupConfigureScreen();
